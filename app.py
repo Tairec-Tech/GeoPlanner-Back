@@ -1,17 +1,18 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 # Importar Base y engine para crear tablas
 from database import Base, engine
 
-# Importar todas las rutas
+# Importar todas las rutas (eliminamos agenda)
 from routes.users import router as user_router
 from routes.auth import router as auth_router
 from routes.posts import router as post_router
 from routes.comments import router as comment_router
 from routes.friendship import router as friendship_router
 from routes.saved_event import router as saved_event_router
-from routes.agenda import router as agenda_router
 
 # Crear tablas automáticamente
 Base.metadata.create_all(engine)
@@ -23,7 +24,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Middleware de CORS (opcional, recomendado si vas a consumir la API desde frontend)
+# Middleware de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,11 +33,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registrar todos los routers
+# Manejo global de excepciones de validación
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detalle": exc.errors(), "mensaje": "Error de validación"}
+    )
+
+# Endpoint raíz para verificar que el servidor funciona
+@app.get("/")
+def read_root():
+    return {"mensaje": "Bienvenido a GeoPlanner API", "version": "1.0.0", "estado": "activo"}
+
+# Registrar todos los routers (sin agenda)
 app.include_router(user_router, prefix="/users", tags=["Usuarios"])
 app.include_router(auth_router, prefix="/auth", tags=["Autenticación"])
 app.include_router(post_router, prefix="/posts", tags=["Publicaciones"])
 app.include_router(comment_router, prefix="/comments", tags=["Comentarios"])
 app.include_router(friendship_router, prefix="/friendships", tags=["Amistades"])
 app.include_router(saved_event_router, prefix="/saved-events", tags=["Eventos Guardados"])
-app.include_router(agenda_router, prefix="/agenda", tags=["Agenda Privada"])
