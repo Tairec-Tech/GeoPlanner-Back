@@ -1,20 +1,84 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models.models import Usuario
+from models.usuario import Usuario
+from routes.auth import get_current_user
 from typing import List
+from pydantic import BaseModel
+from uuid import UUID
+from datetime import datetime
 import uuid
 
 router = APIRouter()
 
-@router.get("/", summary="Obtener todos los usuarios")
-def get_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+# Esquema para respuesta de usuarios
+class UserListResponse(BaseModel):
+    id: str
+    nombre_usuario: str
+    email: str
+    nombre: str
+    apellido: str
+    verificado: bool
+    fecha_creacion: str
+    
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            UUID: lambda v: str(v),
+            datetime: lambda v: v.isoformat()
+        }
+
+@router.get("/me", summary="Obtener perfil del usuario actual")
+def get_current_user_profile(current_user: Usuario = Depends(get_current_user)):
     """
-    Obtiene una lista de usuarios con paginación
+    Obtiene el perfil del usuario autenticado
+    """
+    return {
+        "id": str(current_user.id),
+        "nombre_usuario": current_user.nombre_usuario,
+        "email": current_user.email,
+        "nombre": current_user.nombre,
+        "apellido": current_user.apellido,
+        "fecha_nacimiento": current_user.fecha_nacimiento,
+        "genero": current_user.genero,
+        "foto_perfil_url": current_user.foto_perfil_url,
+        "biografia": current_user.biografia,
+        "latitud": current_user.latitud,
+        "longitud": current_user.longitud,
+        "ciudad": current_user.ciudad,
+        "pais": current_user.pais,
+        "tema_preferido": current_user.tema_preferido,
+        "verificado": current_user.verificado,
+        "fecha_creacion": current_user.fecha_creacion
+    }
+
+@router.get("/all", response_model=List[UserListResponse], summary="Obtener todos los usuarios")
+def get_all_users(
+    skip: int = 0, 
+    limit: int = 100,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los usuarios del sistema
     """
     try:
         users = db.query(Usuario).offset(skip).limit(limit).all()
-        return users
+        
+        # Convertir UUIDs a strings
+        converted_users = []
+        for user in users:
+            converted_users.append({
+                "id": str(user.id),
+                "nombre_usuario": user.nombre_usuario,
+                "email": user.email,
+                "nombre": user.nombre,
+                "apellido": user.apellido,
+                "verificado": user.verificado,
+                "fecha_creacion": user.fecha_creacion.isoformat()
+            })
+        
+        return converted_users
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -46,6 +110,91 @@ def get_user(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener usuario: {str(e)}"
+        )
+def get_all_users(
+    skip: int = 0, 
+    limit: int = 100,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todos los usuarios del sistema
+    """
+    try:
+        users = db.query(Usuario).offset(skip).limit(limit).all()
+        
+        # Convertir UUIDs a strings
+        converted_users = []
+        for user in users:
+            converted_users.append({
+                "id": str(user.id),
+                "nombre_usuario": user.nombre_usuario,
+                "email": user.email,
+                "nombre": user.nombre,
+                "apellido": user.apellido,
+                "verificado": user.verificado,
+                "fecha_creacion": user.fecha_creacion.isoformat()
+            })
+        
+        return converted_users
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener usuarios: {str(e)}"
+        )
+
+@router.put("/me", summary="Actualizar perfil del usuario actual")
+def update_current_user_profile(
+    biografia: str = None,
+    latitud: float = None,
+    longitud: float = None,
+    ciudad: str = None,
+    pais: str = None,
+    tema_preferido: str = None,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Actualiza el perfil del usuario autenticado
+    """
+    try:
+        if biografia is not None:
+            current_user.biografia = biografia
+        if latitud is not None:
+            current_user.latitud = latitud
+        if longitud is not None:
+            current_user.longitud = longitud
+        if ciudad is not None:
+            current_user.ciudad = ciudad
+        if pais is not None:
+            current_user.pais = pais
+        if tema_preferido is not None:
+            current_user.tema_preferido = tema_preferido
+            
+        db.commit()
+        db.refresh(current_user)
+        
+        return {
+            "mensaje": "Perfil actualizado correctamente",
+            "usuario": {
+                "id": str(current_user.id),
+                "nombre_usuario": current_user.nombre_usuario,
+                "email": current_user.email,
+                "nombre": current_user.nombre,
+                "apellido": current_user.apellido,
+                "biografia": current_user.biografia,
+                "latitud": current_user.latitud,
+                "longitud": current_user.longitud,
+                "ciudad": current_user.ciudad,
+                "pais": current_user.pais,
+                "tema_preferido": current_user.tema_preferido
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar perfil: {str(e)}"
         )
 
 @router.get("/username/{username}", summary="Obtener usuario por nombre de usuario")

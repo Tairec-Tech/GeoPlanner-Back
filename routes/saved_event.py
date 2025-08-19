@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models.models import EventoGuardado, Publicacion, Usuario
+from models.eventoguardado import EventoGuardado
+from models.publicacion import Publicacion
+from models.usuario import Usuario
 from pydantic import BaseModel
 from typing import List
 import uuid
+from datetime import datetime
 
 router = APIRouter()
 
@@ -19,6 +22,10 @@ class SavedEventResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        json_encoders = {
+            uuid.UUID: str,
+            datetime: lambda v: v.isoformat()
+        }
 
 @router.post("/", summary="Guardar evento")
 def save_event(save_data: SaveEventRequest, user_id: str, db: Session = Depends(get_db)):
@@ -68,7 +75,14 @@ def save_event(save_data: SaveEventRequest, user_id: str, db: Session = Depends(
         db.commit()
         db.refresh(new_saved_event)
         
-        return {"mensaje": "Evento guardado exitosamente", "evento_guardado": new_saved_event}
+        return {
+            "mensaje": "Evento guardado exitosamente", 
+            "evento_guardado": {
+                "id_usuario": str(new_saved_event.id_usuario),
+                "id_publicacion": str(new_saved_event.id_publicacion),
+                "fecha_guardado": new_saved_event.fecha_guardado.isoformat()
+            }
+        }
         
     except HTTPException:
         raise
@@ -145,7 +159,16 @@ def get_saved_events(user_id: str, db: Session = Depends(get_db)):
         # Obtener eventos guardados
         saved_events = db.query(EventoGuardado).filter(EventoGuardado.id_usuario == user_id).all()
         
-        return saved_events
+        # Convertir UUIDs y datetimes a strings para la respuesta
+        result = []
+        for event in saved_events:
+            result.append({
+                "id_usuario": str(event.id_usuario),
+                "id_publicacion": str(event.id_publicacion),
+                "fecha_guardado": event.fecha_guardado.isoformat()
+            })
+        
+        return result
         
     except HTTPException:
         raise

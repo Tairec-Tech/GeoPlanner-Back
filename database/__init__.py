@@ -1,80 +1,62 @@
-# Importar librerías necesarias
+# Importar librerias necesarias para establecer conexion FastAPI + PostgreSQL
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-import psycopg # Librería para PostgreSQL v3
 
-# Importar configuración de la aplicación
+# Configuracion de la aplicacion
 from config import config
 
-# String de conexión para SQLAlchemy con psycopg3
-DATABASE_URL = f"postgresql+psycopg://{config['DB_USER']}:{config['DB_PASSWORD']}@{config['DB_HOST']}/{config['DB_NAME']}"
-
-# -----------------------------------------------------------------
-# ## INICIO DE LA LÓGICA DE CREACIÓN AUTOMÁTICA DE BASE DE DATOS ##
-# -----------------------------------------------------------------
-
-try:
-    # 1. Intento inicial de crear el motor de conexión.
-    #    SQLAlchemy no crea la base de datos aquí, solo se prepara para conectar.
-    engine = create_engine(DATABASE_URL)
-
-    # 2. Se intenta establecer una conexión real para verificar si la DB existe.
-    #    Si la base de datos no existe, esta línea lanzará una excepción.
-    with engine.connect() as connection:
-        print(f"Conexión exitosa a la base de datos '{config['DB_NAME']}'.")
-        pass
-
-# 3. Si la conexión falla (porque la DB no existe), se captura el error.
-except Exception as e:
-    print(f"La base de datos '{config['DB_NAME']}' no existe. Intentando crearla...")
-    
+# Lógica para verificar si la base de datos existe y crearla si no es así
+def create_database_if_not_exists():
+    # Importar libreria de conexion python + postgres
+    import psycopg2
+    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
     try:
-        # 4. Conexión a la base de datos "postgres" por defecto (esta siempre existe).
-        #    Esta conexión es necesaria para tener permisos y poder ejecutar CREATE DATABASE.
-        #    'autocommit=True' es crucial para que el comando CREATE DATABASE se ejecute fuera de una transacción.
-        conn = psycopg.connect(
+        # Conectar a PostgreSQL
+        conn = psycopg2.connect(
+            dbname='postgres',
             user=config['DB_USER'],
             password=config['DB_PASSWORD'],
-            host=config['DB_HOST'],
-            dbname='postgres', # Conectar a la base de datos de mantenimiento
-            autocommit=True
+            host=config['DB_HOST']
         )
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cursor = conn.cursor()
 
-        # 5. Ejecutar el comando SQL para crear la nueva base de datos.
-        #    Se usa f-string de forma segura porque el nombre de la DB viene de tu archivo de config.
-        #    Si fuera un input de usuario, se debería sanitizar.
-        conn.execute(f'CREATE DATABASE "{config["DB_NAME"]}"')
-        
-        print(f"Base de datos '{config['DB_NAME']}' creada exitosamente.")
+        # Verificar si la base de datos ya existe
+        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{config['DB_NAME']}'")
+        exists = cursor.fetchone()
 
-        # Cerrar la conexión de mantenimiento
+        if not exists:
+            # Crear la base de datos si no existe, con codificación UTF8
+            cursor.execute(f"CREATE DATABASE {config['DB_NAME']} ENCODING 'UTF8'")
+
+        # Cerrar la conexion
+        cursor.close()
         conn.close()
+    except:
+        print("Error al conectar o crear la base de datos.")
 
-        # 6. Ahora que la base de datos ya existe, se crea el motor de SQLAlchemy
-        #    definitivo que usará el resto de la aplicación.
-        engine = create_engine(DATABASE_URL)
+# Ejecutar la funcion para crear la base de datos si no existe
+create_database_if_not_exists()
 
-    except Exception as create_error:
-        print(f"ERROR: No se pudo crear la base de datos. Revisa los permisos del usuario.")
-        print(f"Detalle del error: {create_error}")
-        raise create_error
+# String que conecta SQLAlchemy con PostgreSQL
+DATABASE_URL = f'postgresql+psycopg2://{config["DB_USER"]}:{config["DB_PASSWORD"]}@{config["DB_HOST"]}/{config["DB_NAME"]}'
 
-# ---------------------------------------------------------------
-# ## FIN DE LA LÓGICA DE CREACIÓN AUTOMÁTICA ##
-# ---------------------------------------------------------------
+# Crear motor de conexion de PostgreSQL
+engine = create_engine(DATABASE_URL)
 
-# Crear la fábrica de sesiones (SessionLocal) para interactuar con la DB
+# Crear tienda de sesiones de conexion con la base de datos
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Clase base para los modelos ORM de SQLAlchemy
+# Clase base para todos nuestros modelos (tablas) de base de datos 
 Base = declarative_base()
 
-
-# Función de dependencia para las rutas de FastAPI
+# Funcion que retorna una instancia de conexion con la base de datos
 def get_db():
     db = SessionLocal()
     try:
+        # Generamos una sesion de conexion con base de datos
         yield db
     finally:
+        # Cerramos la conexion con bases de datos para liberar memoria
         db.close()

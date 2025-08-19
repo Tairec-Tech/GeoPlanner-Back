@@ -1,17 +1,19 @@
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
 
 class AgendaCreate(BaseModel):
-    title: str
-    description: str
-    date: datetime
+    titulo: str
+    descripcion: Optional[str] = None
+    fecha_actividad: datetime
 
 class AgendaResponse(BaseModel):
-    id: int
-    title: str
-    description: str
-    date: datetime
-    user_id: int
+    id: str
+    id_usuario: str
+    titulo: str
+    descripcion: Optional[str]
+    fecha_actividad: datetime
+    fecha_creacion: datetime
 
     class Config:
-         from_attributes = True
+        orm_mode = True

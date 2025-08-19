@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models.models import Amistad, Usuario
+from models.amistad import Amistad
+from models.usuario import Usuario
 from pydantic import BaseModel
 from typing import List
 import uuid
+from datetime import datetime
 
 router = APIRouter()
 
@@ -21,6 +23,10 @@ class FriendshipResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        json_encoders = {
+            uuid.UUID: lambda v: str(v),
+            datetime: lambda v: v.isoformat()
+        }
 
 @router.post("/request", summary="Enviar solicitud de amistad")
 def send_friendship_request(friendship_data: FriendshipRequest, user_id: str, db: Session = Depends(get_db)):
@@ -76,7 +82,16 @@ def send_friendship_request(friendship_data: FriendshipRequest, user_id: str, db
         db.commit()
         db.refresh(new_friendship)
         
-        return {"mensaje": "Solicitud de amistad enviada", "amistad": new_friendship}
+        return {
+            "mensaje": "Solicitud de amistad enviada", 
+            "amistad": {
+                "id_usuario1": str(new_friendship.id_usuario1),
+                "id_usuario2": str(new_friendship.id_usuario2),
+                "estado": new_friendship.estado,
+                "id_usuario_accion": str(new_friendship.id_usuario_accion),
+                "fecha_creacion": new_friendship.fecha_creacion.isoformat()
+            }
+        }
         
     except HTTPException:
         raise
@@ -132,7 +147,16 @@ def accept_friendship(friend_id: str, user_id: str, db: Session = Depends(get_db
         db.commit()
         db.refresh(friendship)
         
-        return {"mensaje": "Solicitud de amistad aceptada", "amistad": friendship}
+        return {
+            "mensaje": "Solicitud de amistad aceptada", 
+            "amistad": {
+                "id_usuario1": str(friendship.id_usuario1),
+                "id_usuario2": str(friendship.id_usuario2),
+                "estado": friendship.estado,
+                "id_usuario_accion": str(friendship.id_usuario_accion),
+                "fecha_creacion": friendship.fecha_creacion.isoformat()
+            }
+        }
         
     except HTTPException:
         raise
@@ -162,7 +186,18 @@ def get_user_friendships(user_id: str, db: Session = Depends(get_db)):
             (Amistad.id_usuario1 == user_id) | (Amistad.id_usuario2 == user_id)
         ).all()
         
-        return friendships
+        # Convertir UUIDs a strings
+        converted_friendships = []
+        for friendship in friendships:
+            converted_friendships.append({
+                "id_usuario1": str(friendship.id_usuario1),
+                "id_usuario2": str(friendship.id_usuario2),
+                "estado": friendship.estado,
+                "id_usuario_accion": str(friendship.id_usuario_accion),
+                "fecha_creacion": friendship.fecha_creacion.isoformat()
+            })
+        
+        return converted_friendships
         
     except ValueError:
         raise HTTPException(
@@ -191,7 +226,18 @@ def get_pending_requests(user_id: str, db: Session = Depends(get_db)):
             Amistad.id_usuario_accion != user_id  # No incluir las que envió el usuario
         ).all()
         
-        return pending_requests
+        # Convertir UUIDs a strings
+        converted_requests = []
+        for request in pending_requests:
+            converted_requests.append({
+                "id_usuario1": str(request.id_usuario1),
+                "id_usuario2": str(request.id_usuario2),
+                "estado": request.estado,
+                "id_usuario_accion": str(request.id_usuario_accion),
+                "fecha_creacion": request.fecha_creacion.isoformat()
+            })
+        
+        return converted_requests
         
     except ValueError:
         raise HTTPException(
