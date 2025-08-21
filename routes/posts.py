@@ -4,6 +4,7 @@ from database import get_db
 from models.publicacion import Publicacion
 from models.usuario import Usuario
 from models.like import Like
+from models.amistad import Amistad
 from routes.auth import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
@@ -21,6 +22,7 @@ class PostCreate(BaseModel):
     privacidad: str = "publica"  # 'publica', 'amigos', 'privada'
     media_url: Optional[str] = None
     terminos_adicionales: Optional[str] = None
+    rutas: Optional[List[dict]] = None
 
 class PostResponse(BaseModel):
     id: str
@@ -46,6 +48,46 @@ class PostResponse(BaseModel):
             UUID: lambda v: str(v)
         }
 
+def get_blocked_users(user_id: str, db: Session) -> List[str]:
+    """
+    Obtiene la lista de usuarios bloqueados por el usuario actual
+    """
+    # Buscar relaciones donde el usuario actual bloqueó a otros
+    blocked_relations = db.query(Amistad).filter(
+        ((Amistad.id_usuario1 == user_id) | (Amistad.id_usuario2 == user_id)),
+        Amistad.estado == "bloqueada",
+        Amistad.id_usuario_accion == user_id  # El usuario actual es quien bloqueó
+    ).all()
+    
+    blocked_users = []
+    for relation in blocked_relations:
+        if str(relation.id_usuario1) == user_id:
+            blocked_users.append(str(relation.id_usuario2))
+        else:
+            blocked_users.append(str(relation.id_usuario1))
+    
+    return blocked_users
+
+def get_users_who_blocked_me(user_id: str, db: Session) -> List[str]:
+    """
+    Obtiene la lista de usuarios que bloquearon al usuario actual
+    """
+    # Buscar relaciones donde otros bloquearon al usuario actual
+    blocked_by_relations = db.query(Amistad).filter(
+        ((Amistad.id_usuario1 == user_id) | (Amistad.id_usuario2 == user_id)),
+        Amistad.estado == "bloqueada",
+        Amistad.id_usuario_accion != user_id  # El usuario actual NO es quien bloqueó
+    ).all()
+    
+    users_who_blocked = []
+    for relation in blocked_by_relations:
+        if str(relation.id_usuario1) == user_id:
+            users_who_blocked.append(str(relation.id_usuario2))
+        else:
+            users_who_blocked.append(str(relation.id_usuario1))
+    
+    return users_who_blocked
+
 @router.get("/", response_model=List[PostResponse], summary="Obtener publicaciones del usuario autenticado")
 def get_posts(
     skip: int = 0, 
@@ -54,14 +96,27 @@ def get_posts(
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene las publicaciones del usuario autenticado y sus amigos
+    Obtiene las publicaciones del usuario autenticado y sus amigos, excluyendo usuarios bloqueados
     """
     try:
-        # Obtener publicaciones públicas y del usuario actual con información del autor
-        posts = db.query(Publicacion).join(Usuario, Publicacion.id_autor == Usuario.id).filter(
+        # Obtener usuarios bloqueados y usuarios que me bloquearon
+        blocked_users = get_blocked_users(str(current_user.id), db)
+        users_who_blocked_me = get_users_who_blocked_me(str(current_user.id), db)
+        
+        # Combinar ambas listas para excluir completamente
+        users_to_exclude = list(set(blocked_users + users_who_blocked_me))
+        
+        # Obtener publicaciones públicas y del usuario actual, excluyendo usuarios bloqueados
+        posts_query = db.query(Publicacion).join(Usuario, Publicacion.id_autor == Usuario.id).filter(
             (Publicacion.privacidad == "publica") | 
             (Publicacion.id_autor == str(current_user.id))
-        ).offset(skip).limit(limit).all()
+        )
+        
+        # Excluir publicaciones de usuarios bloqueados
+        if users_to_exclude:
+            posts_query = posts_query.filter(~Publicacion.id_autor.in_(users_to_exclude))
+        
+        posts = posts_query.offset(skip).limit(limit).all()
         
         # Convertir UUIDs a strings para cada post y agregar información de likes
         converted_posts = []
@@ -75,8 +130,10 @@ def get_posts(
             if hasattr(post, 'rutas') and post.rutas:
                 for ruta in post.rutas:
                     rutas.append({
-                        "coords": ruta.coords,
-                        "label": ruta.label
+                        "latitud": ruta.latitud,
+                        "longitud": ruta.longitud,
+                        "etiqueta": ruta.etiqueta,
+                        "orden": ruta.orden
                     })
             
             converted_posts.append({
@@ -130,8 +187,10 @@ def get_post(post_id: str, db: Session = Depends(get_db)):
         if hasattr(post, 'rutas') and post.rutas:
             for ruta in post.rutas:
                 rutas.append({
-                    "coords": ruta.coords,
-                    "label": ruta.label
+                    "latitud": ruta.latitud,
+                    "longitud": ruta.longitud,
+                    "etiqueta": ruta.etiqueta,
+                    "orden": ruta.orden
                 })
         
         # Convertir UUIDs a strings
@@ -188,6 +247,21 @@ def create_post(
         db.add(new_post)
         db.commit()
         db.refresh(new_post)
+        
+        # Crear rutas si se proporcionan
+        if post_data.rutas:
+            from models.ruta import Ruta
+            for i, ruta_data in enumerate(post_data.rutas):
+                ruta = Ruta(
+                    id_publicacion=new_post.id,
+                    latitud=ruta_data.get("latitud", 0),
+                    longitud=ruta_data.get("longitud", 0),
+                    etiqueta=ruta_data.get("etiqueta", f"Punto {i+1}"),
+                    orden=ruta_data.get("orden", i)
+                )
+                db.add(ruta)
+            
+            db.commit()
         
         # Obtener información del autor
         autor = db.query(Usuario).filter(Usuario.id == current_user.id).first()
@@ -249,8 +323,10 @@ def get_user_posts(user_id: str, db: Session = Depends(get_db)):
             if hasattr(post, 'rutas') and post.rutas:
                 for ruta in post.rutas:
                     rutas.append({
-                        "coords": ruta.coords,
-                        "label": ruta.label
+                        "latitud": ruta.latitud,
+                        "longitud": ruta.longitud,
+                        "etiqueta": ruta.etiqueta,
+                        "orden": ruta.orden
                     })
             
             converted_posts.append({

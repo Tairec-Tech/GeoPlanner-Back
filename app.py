@@ -59,12 +59,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 def read_root():
     return {"mensaje": "Bienvenido a GeoPlanner API", "version": "5.0.0", "estado": "activo"}
 
+# Endpoint de prueba para verificar autenticación
+@app.get("/test-auth")
+def test_auth():
+    return {"mensaje": "Endpoint de prueba sin autenticación funcionando"}
+
 # Registrar todos los routers (incluyendo agenda)
 app.include_router(user_router, prefix="/users", tags=["Usuarios"])
 app.include_router(auth_router, prefix="/auth", tags=["Autenticación"])
 app.include_router(post_router, prefix="/posts", tags=["Publicaciones"])
 app.include_router(comment_router, prefix="/comments", tags=["Comentarios"])
-app.include_router(friendship_router, prefix="/friendships", tags=["Amistades"])
+app.include_router(friendship_router, prefix="/friendship", tags=["Amistades"])
 app.include_router(saved_event_router, prefix="/saved-events", tags=["Eventos Guardados"])
 app.include_router(agenda_router, prefix="/agenda", tags=["Agenda"])
 app.include_router(like_router, prefix="/posts", tags=["Likes"])

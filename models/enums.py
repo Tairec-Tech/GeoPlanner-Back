@@ -31,3 +31,4 @@ class EstadoAmistadEnum(enum.Enum):
     pendiente = 'pendiente'
     aceptada = 'aceptada'
     rechazada = 'rechazada'
+    bloqueada = 'bloqueada'

@@ -7,7 +7,7 @@ import bcrypt
 import uuid
 from uuid import UUID
 from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer, OAuth2PasswordRequestForm
 from datetime import timedelta, datetime
 from typing import Optional
 
@@ -55,6 +55,7 @@ ALGORITHM = config['ALGORITHM']
 ACCESS_TOKEN_EXPIRE_MINUTES = config['ACCESS_TOKEN_EXPIRE_MINUTES']
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+http_bearer = HTTPBearer(auto_error=False)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -73,12 +74,36 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user_id = payload.get("sub")
         if not user_id:
             raise credentials_exception
-    except JWTError:
+        
+        # Convertir el user_id string a UUID
+        user_uuid = uuid.UUID(user_id)
+        user = db.query(Usuario).filter(Usuario.id == user_uuid).first()
+        if user is None:
+            raise credentials_exception
+        return user
+    except (JWTError, ValueError):
         raise credentials_exception
-    user = db.query(Usuario).filter(Usuario.id == user_id).first()
-    if user is None:
-        raise credentials_exception
-    return user
+
+def get_current_user_optional(credentials: Optional[HTTPBearer] = Depends(http_bearer), db: Session = Depends(get_db)):
+    """
+    Versión opcional de get_current_user que no requiere autenticación
+    """
+    if credentials is None:
+        return None
+    
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        
+        # Convertir el user_id string a UUID
+        user_uuid = uuid.UUID(user_id)
+        user = db.query(Usuario).filter(Usuario.id == user_uuid).first()
+        return user
+    except (JWTError, ValueError):
+        return None
 
 @router.post("/register", response_model=UserResponse, summary="Registrar nuevo usuario")
 def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
