@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.amistad import Amistad
 from models.usuario import Usuario
+from models.notificacion import Notificacion
+from routes.auth import get_current_user
 from pydantic import BaseModel
 from typing import List
 import uuid
@@ -12,7 +14,6 @@ router = APIRouter()
 
 # Esquemas para amistades
 class FriendshipRequest(BaseModel):
-    from_user_id: str
     to_user_id: str
 
 class FriendshipResponse(BaseModel):
@@ -105,34 +106,36 @@ def get_friendship_status(user_id1: str, user_id2: str, db: Session = Depends(ge
         )
 
 @router.post("/request", summary="Enviar solicitud de amistad")
-def send_friendship_request(friendship_data: FriendshipRequest, db: Session = Depends(get_db)):
+def send_friendship_request(
+    friendship_data: FriendshipRequest, 
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Envía una solicitud de amistad a otro usuario
     """
     try:
-        # Validar UUIDs
-        uuid.UUID(friendship_data.from_user_id)
+        # Validar UUID del usuario destinatario
         uuid.UUID(friendship_data.to_user_id)
         
-        # Verificar que ambos usuarios existen
-        user1 = db.query(Usuario).filter(Usuario.id == friendship_data.from_user_id).first()
+        # Verificar que el usuario destinatario existe
         user2 = db.query(Usuario).filter(Usuario.id == friendship_data.to_user_id).first()
         
-        if not user1 or not user2:
+        if not user2:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado"
             )
         
         # No se puede enviar solicitud a uno mismo
-        if friendship_data.from_user_id == friendship_data.to_user_id:
+        if str(current_user.id) == friendship_data.to_user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No puedes enviarte una solicitud de amistad a ti mismo"
             )
         
         # Ordenar los IDs para mantener consistencia (id1 < id2)
-        id1, id2 = sorted([friendship_data.from_user_id, friendship_data.to_user_id])
+        id1, id2 = sorted([str(current_user.id), friendship_data.to_user_id])
         
         # Verificar si ya existe una relación
         existing_friendship = db.query(Amistad).filter(
@@ -151,10 +154,20 @@ def send_friendship_request(friendship_data: FriendshipRequest, db: Session = De
             id_usuario1=id1,
             id_usuario2=id2,
             estado="pendiente",
-            id_usuario_accion=friendship_data.from_user_id
+            id_usuario_accion=str(current_user.id)
         )
         
         db.add(new_friendship)
+        
+        # Crear notificación para el usuario que recibe la solicitud
+        notification = Notificacion(
+            id_usuario_destino=friendship_data.to_user_id,
+            id_usuario_origen=str(current_user.id),
+            tipo="solicitud_amistad",
+            mensaje=f"{current_user.nombre} {current_user.apellido} te ha enviado una solicitud de amistad"
+        )
+        
+        db.add(notification)
         db.commit()
         db.refresh(new_friendship)
         
@@ -345,6 +358,20 @@ def accept_friendship(friend_id: str, user_id: str, db: Session = Depends(get_db
         friendship.estado = "aceptada"
         friendship.id_usuario_accion = user_id
         
+        # Obtener información del usuario que acepta
+        accepting_user = db.query(Usuario).filter(Usuario.id == user_id).first()
+        # Obtener información del usuario que envió la solicitud
+        requesting_user = db.query(Usuario).filter(Usuario.id == friend_id).first()
+        
+        # Crear notificación para el usuario que envió la solicitud
+        notification = Notificacion(
+            id_usuario_destino=friend_id,
+            id_usuario_origen=user_id,
+            tipo="amistad_aceptada",
+            mensaje=f"{accepting_user.nombre} {accepting_user.apellido} ha aceptado tu solicitud de amistad"
+        )
+        
+        db.add(notification)
         db.commit()
         db.refresh(friendship)
         
@@ -371,6 +398,74 @@ def accept_friendship(friend_id: str, user_id: str, db: Session = Depends(get_db
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al aceptar solicitud de amistad: {str(e)}"
+        )
+
+@router.put("/reject/{friend_id}", summary="Rechazar solicitud de amistad")
+def reject_friendship(friend_id: str, user_id: str, db: Session = Depends(get_db)):
+    """
+    Rechaza una solicitud de amistad pendiente
+    """
+    try:
+        # Validar UUIDs
+        uuid.UUID(user_id)
+        uuid.UUID(friend_id)
+        
+        # Ordenar los IDs
+        id1, id2 = sorted([user_id, friend_id])
+        
+        # Buscar la solicitud pendiente
+        friendship = db.query(Amistad).filter(
+            Amistad.id_usuario1 == id1,
+            Amistad.id_usuario2 == id2,
+            Amistad.estado == "pendiente"
+        ).first()
+        
+        if not friendship:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Solicitud de amistad no encontrada"
+            )
+        
+        # Verificar que el usuario actual puede rechazar (no es quien envió la solicitud)
+        if str(friendship.id_usuario_accion) == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes rechazar tu propia solicitud"
+            )
+        
+        # Obtener información del usuario que rechaza
+        rejecting_user = db.query(Usuario).filter(Usuario.id == user_id).first()
+        
+        # Crear notificación para el usuario que envió la solicitud
+        notification = Notificacion(
+            id_usuario_destino=friend_id,
+            id_usuario_origen=user_id,
+            tipo="amistad_rechazada",
+            mensaje=f"{rejecting_user.nombre} {rejecting_user.apellido} ha rechazado tu solicitud de amistad"
+        )
+        
+        db.add(notification)
+        
+        # Eliminar la solicitud de amistad
+        db.delete(friendship)
+        db.commit()
+        
+        return {
+            "mensaje": "Solicitud de amistad rechazada"
+        }
+        
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID de usuario inválido"
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al rechazar solicitud de amistad: {str(e)}"
         )
 
 @router.get("/", response_model=List[FriendshipResponse], summary="Obtener amistades del usuario")

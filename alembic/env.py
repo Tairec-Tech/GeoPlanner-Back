@@ -7,7 +7,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from models import Base
+from models.models import Base
 
 # Cargar variables de entorno
 load_dotenv()

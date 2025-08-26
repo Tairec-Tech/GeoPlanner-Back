@@ -6,3 +6,4 @@ from .auth import *
 from .friendship import *
 from .saved_event import *
 from .ruta import *
+from .qr_attendance import *

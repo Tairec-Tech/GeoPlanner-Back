@@ -4,6 +4,7 @@ from database import get_db
 from models.eventoguardado import EventoGuardado
 from models.publicacion import Publicacion
 from models.usuario import Usuario
+from routes.auth import get_current_user
 from pydantic import BaseModel
 from typing import List
 import uuid
@@ -184,26 +185,18 @@ def get_saved_events(user_id: str, db: Session = Depends(get_db)):
         )
 
 @router.get("/with-details", summary="Obtener eventos guardados con detalles")
-def get_saved_events_with_details(user_id: str, db: Session = Depends(get_db)):
+def get_saved_events_with_details(
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Obtiene todos los eventos guardados de un usuario con los detalles de la publicación
+    Obtiene todos los eventos guardados del usuario autenticado con los detalles de la publicación
     """
     try:
-        # Validar UUID
-        uuid.UUID(user_id)
-        
-        # Verificar que el usuario existe
-        user = db.query(Usuario).filter(Usuario.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado"
-            )
-        
         # Obtener eventos guardados con JOIN a publicaciones
         saved_events_with_details = db.query(EventoGuardado, Publicacion).join(
             Publicacion, EventoGuardado.id_publicacion == Publicacion.id
-        ).filter(EventoGuardado.id_usuario == user_id).all()
+        ).filter(EventoGuardado.id_usuario == str(current_user.id)).all()
         
         # Formatear respuesta
         result = []
@@ -228,11 +221,6 @@ def get_saved_events_with_details(user_id: str, db: Session = Depends(get_db)):
         
     except HTTPException:
         raise
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="ID de usuario inválido"
-        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -17,6 +17,7 @@ from routes.agenda import router as agenda_router
 from routes.likes import router as like_router
 from routes.notifications import router as notification_router
 from routes.upload import router as upload_router
+from routes.qr_attendance import router as qr_attendance_router
 
 # Crear tablas automáticamente
 Base.metadata.create_all(engine)
@@ -75,3 +76,4 @@ app.include_router(agenda_router, prefix="/agenda", tags=["Agenda"])
 app.include_router(like_router, prefix="/posts", tags=["Likes"])
 app.include_router(notification_router, prefix="/notifications", tags=["Notificaciones"])
 app.include_router(upload_router, prefix="/upload", tags=["Subida de Archivos"])
+app.include_router(qr_attendance_router, prefix="/qr-attendance", tags=["QR y Asistencia"])

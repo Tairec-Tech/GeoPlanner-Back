@@ -52,10 +52,16 @@ class EstadoAsistenciaEnum(enum.Enum):
     asistio = 'asistio'
     no_asistio = 'no_asistio'
 
+class EstadoVerificacionQREnum(enum.Enum):
+    pendiente = 'pendiente'
+    verificado = 'verificado'
+    cancelado = 'cancelado'
+
 class EstadoAmistadEnum(enum.Enum):
     pendiente = 'pendiente'
     aceptada = 'aceptada'
     rechazada = 'rechazada'
+    bloqueada = 'bloqueada'
 
 
 # --- Definición de Modelos (Tablas) ---
@@ -204,3 +210,23 @@ class ActividadAgenda(Base):
     
     # Relación
     usuario = relationship("Usuario", back_populates="agenda_personal")
+
+
+class HistorialAsistencia(Base):
+    __tablename__ = 'historialasistencia'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id_inscripcion_usuario = Column(UUID(as_uuid=True), ForeignKey('usuarios.id', ondelete='CASCADE'), nullable=False)
+    id_inscripcion_publicacion = Column(UUID(as_uuid=True), ForeignKey('publicaciones.id', ondelete='CASCADE'), nullable=False)
+    id_verificador = Column(UUID(as_uuid=True), ForeignKey('usuarios.id', ondelete='CASCADE'), nullable=False)
+    codigo_qr_data = Column(Text, nullable=False)  # Datos del QR generado
+    estado_verificacion = Column(Enum(EstadoVerificacionQREnum), nullable=False, default=EstadoVerificacionQREnum.pendiente)
+    fecha_verificacion = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    ubicacion_verificacion_lat = Column(Numeric(9, 6))  # Ubicación donde se escaneó
+    ubicacion_verificacion_lng = Column(Numeric(9, 6))
+    notas_verificacion = Column(Text)  # Notas adicionales del verificador
+    
+    # Relaciones
+    inscripcion_usuario = relationship("Usuario", foreign_keys=[id_inscripcion_usuario])
+    inscripcion_publicacion = relationship("Publicacion", foreign_keys=[id_inscripcion_publicacion])
+    verificador = relationship("Usuario", foreign_keys=[id_verificador])

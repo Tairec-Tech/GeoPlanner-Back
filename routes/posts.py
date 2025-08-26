@@ -106,9 +106,37 @@ def get_posts(
         # Combinar ambas listas para excluir completamente
         users_to_exclude = list(set(blocked_users + users_who_blocked_me))
         
-        # Obtener publicaciones públicas y del usuario actual, excluyendo usuarios bloqueados
+        # Obtener publicaciones según las reglas de privacidad
+        # 1. Públicas: todos pueden ver
+        # 2. Privadas: solo el autor puede ver
+        # 3. Amigos: solo amigos pueden ver
+        # 4. Siempre incluir las publicaciones del usuario actual
+        
+        # Obtener amigos del usuario actual
+        from models.amistad import Amistad
+        friends_query = db.query(Amistad).filter(
+            ((Amistad.id_usuario1 == str(current_user.id)) | (Amistad.id_usuario2 == str(current_user.id))) &
+            (Amistad.estado == "aceptada")
+        )
+        friends = friends_query.all()
+        
+        # Crear lista de IDs de amigos
+        friend_ids = []
+        for friendship in friends:
+            if str(friendship.id_usuario1) == str(current_user.id):
+                friend_ids.append(str(friendship.id_usuario2))
+            else:
+                friend_ids.append(str(friendship.id_usuario1))
+        
+        # Construir la consulta con las reglas de privacidad
         posts_query = db.query(Publicacion).join(Usuario, Publicacion.id_autor == Usuario.id).filter(
-            (Publicacion.privacidad == "publica") | 
+            # Públicas: todos pueden ver
+            (Publicacion.privacidad == "publica") |
+            # Privadas: solo el autor puede ver
+            ((Publicacion.privacidad == "privada") & (Publicacion.id_autor == str(current_user.id))) |
+            # Amigos: solo amigos pueden ver
+            ((Publicacion.privacidad == "amigos") & (Publicacion.id_autor.in_(friend_ids))) |
+            # Siempre incluir las publicaciones del usuario actual
             (Publicacion.id_autor == str(current_user.id))
         )
         
@@ -163,9 +191,13 @@ def get_posts(
         )
 
 @router.get("/{post_id}", response_model=PostResponse, summary="Obtener publicación por ID")
-def get_post(post_id: str, db: Session = Depends(get_db)):
+def get_post(
+    post_id: str, 
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Obtiene una publicación específica por su ID
+    Obtiene una publicación específica por su ID, respetando las reglas de privacidad
     """
     try:
         # Validar que el ID sea un UUID válido
@@ -176,6 +208,34 @@ def get_post(post_id: str, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Publicación no encontrada"
+            )
+        
+        # Verificar permisos de acceso según la privacidad
+        can_access = False
+        
+        # El autor siempre puede ver sus publicaciones
+        if str(post.id_autor) == str(current_user.id):
+            can_access = True
+        # Públicas: todos pueden ver
+        elif post.privacidad == "publica":
+            can_access = True
+        # Privadas: solo el autor puede ver
+        elif post.privacidad == "privada":
+            can_access = str(post.id_autor) == str(current_user.id)
+        # Amigos: solo amigos pueden ver
+        elif post.privacidad == "amigos":
+            from models.amistad import Amistad
+            friendship = db.query(Amistad).filter(
+                ((Amistad.id_usuario1 == str(current_user.id)) & (Amistad.id_usuario2 == str(post.id_autor))) |
+                ((Amistad.id_usuario1 == str(post.id_autor)) & (Amistad.id_usuario2 == str(current_user.id))),
+                Amistad.estado == "aceptada"
+            ).first()
+            can_access = friendship is not None
+        
+        if not can_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para ver esta publicación"
             )
         
         # Obtener información de likes
@@ -358,4 +418,128 @@ def get_user_posts(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener publicaciones del usuario: {str(e)}"
+        )
+
+@router.post("/{post_id}/inscribirse", summary="Inscribirse en un evento")
+def inscribirse_evento(
+    post_id: str,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Inscribe al usuario actual en un evento específico
+    """
+    try:
+        # Validar que el post_id sea un UUID válido
+        uuid.UUID(post_id)
+        
+        # Verificar que la publicación existe
+        publicacion = db.query(Publicacion).filter(Publicacion.id == post_id).first()
+        if not publicacion:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Publicación no encontrada"
+            )
+        
+        # Verificar que el usuario no sea el autor del evento
+        if str(publicacion.id_autor) == str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes inscribirte en tu propio evento"
+            )
+        
+        # Verificar que no esté ya inscrito
+        from models.inscripcion import Inscripcion
+        inscripcion_existente = db.query(Inscripcion).filter(
+            Inscripcion.id_usuario == current_user.id,
+            Inscripcion.id_publicacion == post_id
+        ).first()
+        
+        if inscripcion_existente:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya estás inscrito en este evento"
+            )
+        
+        # Crear la inscripción
+        nueva_inscripcion = Inscripcion(
+            id_usuario=current_user.id,
+            id_publicacion=post_id,
+            estado_asistencia="inscrito"
+        )
+        
+        db.add(nueva_inscripcion)
+        db.commit()
+        
+        return {
+            "message": "Inscripción exitosa",
+            "inscripcion_id": str(nueva_inscripcion.id_usuario) + "_" + str(nueva_inscripcion.id_publicacion)
+        }
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID de publicación inválido"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al inscribirse en el evento: {str(e)}"
+        )
+
+@router.delete("/{post_id}/desinscribirse", summary="Desinscribirse de un evento")
+def desinscribirse_evento(
+    post_id: str,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Desinscribe al usuario actual de un evento específico
+    """
+    try:
+        # Validar que el post_id sea un UUID válido
+        uuid.UUID(post_id)
+        
+        # Verificar que la publicación existe
+        publicacion = db.query(Publicacion).filter(Publicacion.id == post_id).first()
+        if not publicacion:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Publicación no encontrada"
+            )
+        
+        # Buscar la inscripción
+        from models.inscripcion import Inscripcion
+        inscripcion = db.query(Inscripcion).filter(
+            Inscripcion.id_usuario == current_user.id,
+            Inscripcion.id_publicacion == post_id
+        ).first()
+        
+        if not inscripcion:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No estás inscrito en este evento"
+            )
+        
+        # Eliminar la inscripción
+        db.delete(inscripcion)
+        db.commit()
+        
+        return {"message": "Desinscripción exitosa"}
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ID de publicación inválido"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al desinscribirse del evento: {str(e)}"
         )
