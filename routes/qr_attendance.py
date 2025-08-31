@@ -78,9 +78,8 @@ def generate_qr_code(
     if not inscription:
         raise HTTPException(status_code=404, detail="Usuario no está inscrito en este evento")
     
-    # Verificar que el evento es privado o solo para amigos
-    if event.privacidad.value not in ['privada', 'amigos']:
-        raise HTTPException(status_code=400, detail="Solo eventos privados o para amigos requieren código QR")
+    # Permitir QR para cualquier evento (público, amigos o privado)
+    # Los QR son útiles para todos los tipos de eventos para verificar asistencia
     
     # Generar datos del QR
     timestamp = datetime.utcnow().isoformat()

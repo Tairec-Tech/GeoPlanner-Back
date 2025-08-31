@@ -190,6 +190,89 @@ def get_posts(
             detail=f"Error al obtener publicaciones: {str(e)}"
         )
 
+@router.get("/my-inscriptions", summary="Obtener inscripciones del usuario actual")
+def get_my_inscriptions(
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todas las inscripciones del usuario actual
+    """
+    try:
+        from models.inscripcion import Inscripcion
+        
+        print(f"Buscando inscripciones para usuario: {current_user.id}")
+        
+        # Obtener todas las inscripciones del usuario
+        inscripciones = db.query(Inscripcion).filter(
+            Inscripcion.id_usuario == current_user.id
+        ).all()
+        
+        print(f"Encontradas {len(inscripciones)} inscripciones")
+        
+        # Obtener los datos completos de las publicaciones
+        result = []
+        for inscripcion in inscripciones:
+            try:
+                print(f"Procesando inscripción: usuario={inscripcion.id_usuario}, publicacion={inscripcion.id_publicacion}")
+                
+                # Obtener la publicación
+                publicacion = db.query(Publicacion).filter(
+                    Publicacion.id == inscripcion.id_publicacion
+                ).first()
+                
+                if publicacion:
+                    print(f"Publicación encontrada: {publicacion.texto[:50]}...")
+                    
+                    # Obtener el autor de la publicación
+                    autor = db.query(Usuario).filter(
+                        Usuario.id == publicacion.id_autor
+                    ).first()
+                    
+                    if autor:
+                        print(f"Autor encontrado: {autor.nombre} {autor.apellido}")
+                        
+                        result.append({
+                            "id": str(inscripcion.id_usuario) + "_" + str(inscripcion.id_publicacion),
+                            "id_usuario": str(inscripcion.id_usuario),
+                            "id_publicacion": str(inscripcion.id_publicacion),
+                            "fecha_inscripcion": inscripcion.fecha_inscripcion.isoformat(),
+                            "estado_asistencia": str(inscripcion.estado_asistencia),
+                            "publicacion": {
+                                "id": str(publicacion.id),
+                                "texto": publicacion.texto,
+                                "tipo": publicacion.tipo,
+                                "privacidad": publicacion.privacidad,
+                                "fecha_evento": publicacion.fecha_evento.isoformat() if publicacion.fecha_evento else None,
+                                "autor": {
+                                    "id": str(autor.id),
+                                    "nombre": autor.nombre,
+                                    "apellido": autor.apellido,
+                                    "username": autor.nombre_usuario,
+                                    "foto_perfil": autor.foto_perfil_url
+                                }
+                            }
+                        })
+                        print(f"Inscripción agregada al resultado")
+                    else:
+                        print(f"Autor no encontrado para publicación {publicacion.id}")
+                else:
+                    print(f"Publicación no encontrada: {inscripcion.id_publicacion}")
+                    
+            except Exception as e:
+                print(f"Error procesando inscripción {inscripcion.id_publicacion}: {str(e)}")
+                continue
+        
+        print(f"Retornando {len(result)} inscripciones procesadas")
+        return result
+        
+    except Exception as e:
+        print(f"Error general en get_my_inscriptions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener inscripciones: {str(e)}"
+        )
+
 @router.get("/{post_id}", response_model=PostResponse, summary="Obtener publicación por ID")
 def get_post(
     post_id: str, 
