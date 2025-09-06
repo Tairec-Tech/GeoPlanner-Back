@@ -1,4 +1,5 @@
 from .usuario import Usuario
+from .configuracion_usuario import ConfiguracionUsuario
 from .publicacion import Publicacion
 from .ruta import Ruta
 from .comentario import Comentario

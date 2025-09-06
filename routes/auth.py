@@ -229,3 +229,159 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
 # Endpoints secretos para administradores (no aparecen en docs)
 
+# ========================================
+# ENDPOINTS DE VERIFICACIÓN DE EMAIL
+# ========================================
+
+from fastapi import BackgroundTasks
+from services.email_service import EmailService
+import secrets
+
+# Instanciar servicio de email
+email_service = EmailService()
+
+# Almacenamiento temporal de códigos (en producción usar Redis o base de datos)
+verification_codes = {}
+
+# Esquemas para verificación de email
+class SendVerificationRequest(BaseModel):
+    email: str
+    username: str
+
+class VerifyEmailRequest(BaseModel):
+    email: str
+    code: str
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+@router.post("/send-verification", summary="Enviar email de verificación")
+async def send_verification_email(
+    request: SendVerificationRequest,
+    background_tasks: BackgroundTasks
+):
+    """Envía email de verificación"""
+    try:
+        # Generar código de verificación
+        verification_code = ''.join(secrets.choice('0123456789') for _ in range(6))
+        
+        # Guardar código con expiración (10 minutos)
+        verification_codes[request.email] = {
+            'code': verification_code,
+            'username': request.username,
+            'expires': datetime.utcnow() + timedelta(minutes=10)
+        }
+        
+        # Enviar email en background
+        background_tasks.add_task(
+            email_service.send_verification_email,
+            request.email, request.username, verification_code
+        )
+        
+        return {
+            "message": "Email de verificación enviado exitosamente",
+            "email": request.email,
+            "expires_in": "10 minutos"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error enviando email de verificación: {str(e)}"
+        )
+
+@router.post("/verify-email", summary="Verificar código de email")
+async def verify_email(request: VerifyEmailRequest):
+    """Verifica el código del email"""
+    try:
+        # Verificar si existe el código
+        if request.email not in verification_codes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Email no encontrado"
+            )
+        
+        stored_data = verification_codes[request.email]
+        
+        # Verificar expiración
+        if datetime.utcnow() > stored_data['expires']:
+            del verification_codes[request.email]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Código expirado"
+            )
+        
+        # Verificar código
+        if request.code != stored_data['code']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Código incorrecto"
+            )
+        
+        # Código válido - limpiar y enviar email de bienvenida
+        username = stored_data['username']
+        del verification_codes[request.email]
+        
+        # Enviar email de bienvenida
+        await email_service.send_welcome_email(request.email, username)
+        
+        return {
+            "message": "Email verificado exitosamente",
+            "username": username,
+            "verified_at": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en la verificación: {str(e)}"
+        )
+
+@router.post("/resend-verification", summary="Reenviar email de verificación")
+async def resend_verification_email(
+    request: ResendVerificationRequest,
+    background_tasks: BackgroundTasks
+):
+    """Reenvía email de verificación"""
+    try:
+        if request.email not in verification_codes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Email no encontrado"
+            )
+        
+        stored_data = verification_codes[request.email]
+        username = stored_data['username']
+        
+        # Generar nuevo código
+        new_code = ''.join(secrets.choice('0123456789') for _ in range(6))
+        
+        # Actualizar código
+        verification_codes[request.email] = {
+            'code': new_code,
+            'username': username,
+            'expires': datetime.utcnow() + timedelta(minutes=10)
+        }
+        
+        # Enviar nuevo email
+        background_tasks.add_task(
+            email_service.send_verification_email,
+            request.email, username, new_code
+        )
+        
+        return {
+            "message": "Nuevo código de verificación enviado",
+            "email": request.email,
+            "expires_in": "10 minutos"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error reenviando código: {str(e)}"
+        )
+

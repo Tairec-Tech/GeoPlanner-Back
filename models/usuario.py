@@ -33,3 +33,4 @@ class Usuario(Base):
     eventos_guardados = relationship("EventoGuardado", back_populates="usuario", cascade="all, delete-orphan")
     agenda_personal = relationship("ActividadAgenda", back_populates="usuario", cascade="all, delete-orphan")
     notificaciones_recibidas = relationship("Notificacion", foreign_keys="Notificacion.id_usuario_destino", back_populates="usuario_destino", cascade="all, delete-orphan")
+    configuracion = relationship("ConfiguracionUsuario", back_populates="usuario", uselist=False, cascade="all, delete-orphan")

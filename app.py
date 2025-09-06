@@ -2,6 +2,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from dotenv import load_dotenv
+import os
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # Importar Base y engine para crear tablas
 from database import Base, engine
@@ -18,6 +23,7 @@ from routes.likes import router as like_router
 from routes.notifications import router as notification_router
 from routes.upload import router as upload_router
 from routes.qr_attendance import router as qr_attendance_router
+from routes.configuracion_usuario import router as configuracion_router
 
 # Crear tablas automáticamente
 Base.metadata.create_all(engine)
@@ -31,10 +37,13 @@ app = FastAPI(
 
 # Lista de orígenes permitidos (de dónde puede venir la solicitud)
 # Para desarrollo, puedes permitir el origen de tu app de React.
-# Si usas Vite, suele ser 'http://localhost:5173'.
+# Si usas Vite, suele ser 'http://localhost:5173' o 'http://localhost:5174'.
 origins = [
     "http://localhost:5173",
-    "http://localhost:3000", # Si usas Create React App
+    "http://localhost:5174",  # Puerto alternativo de Vite
+    "http://localhost:3000",  # Si usas Create React App
+    "https://geoplanner-front.vercel.app",  # Tu frontend en Vercel
+    "https://geoplanner.vercel.app",  # Alternativa
     # Añade aquí la URL de tu frontend si está en producción
 ]
 
@@ -65,6 +74,18 @@ def read_root():
 def test_auth():
     return {"mensaje": "Endpoint de prueba sin autenticación funcionando"}
 
+# Endpoint de prueba para verificar variables de entorno
+@app.get("/test-env")
+def test_env():
+    return {
+        "mensaje": "Variables de entorno SMTP",
+        "MAIL_USERNAME": os.getenv("MAIL_USERNAME", "NO_CONFIGURADO"),
+        "MAIL_PASSWORD": os.getenv("MAIL_PASSWORD", "NO_CONFIGURADO"),
+        "MAIL_SERVER": os.getenv("MAIL_SERVER", "NO_CONFIGURADO"),
+        "MAIL_FROM": os.getenv("MAIL_FROM", "NO_CONFIGURADO"),
+        "MAIL_PORT": os.getenv("MAIL_PORT", "NO_CONFIGURADO")
+    }
+
 # Registrar todos los routers (incluyendo agenda)
 app.include_router(user_router, prefix="/users", tags=["Usuarios"])
 app.include_router(auth_router, prefix="/auth", tags=["Autenticación"])
@@ -77,3 +98,4 @@ app.include_router(like_router, prefix="/posts", tags=["Likes"])
 app.include_router(notification_router, prefix="/notifications", tags=["Notificaciones"])
 app.include_router(upload_router, prefix="/upload", tags=["Subida de Archivos"])
 app.include_router(qr_attendance_router, prefix="/qr-attendance", tags=["QR y Asistencia"])
+app.include_router(configuracion_router, prefix="/users", tags=["Configuraciones de Usuario"])

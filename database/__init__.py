@@ -2,12 +2,18 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+import os
 
 # Configuracion de la aplicacion
 from config import config
 
 # Lógica para verificar si la base de datos existe y crearla si no es así
 def create_database_if_not_exists():
+    # Solo ejecutar en desarrollo local, no en Railway
+    if os.getenv('RAILWAY_ENVIRONMENT'):
+        print("Ejecutando en Railway - saltando creación de base de datos")
+        return
+    
     # Importar libreria de conexion python + postgres
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -33,14 +39,18 @@ def create_database_if_not_exists():
         # Cerrar la conexion
         cursor.close()
         conn.close()
-    except:
-        print("Error al conectar o crear la base de datos.")
+    except Exception as e:
+        print(f"Error al conectar o crear la base de datos: {e}")
 
 # Ejecutar la funcion para crear la base de datos si no existe
 create_database_if_not_exists()
 
 # String que conecta SQLAlchemy con PostgreSQL
-DATABASE_URL = f'postgresql+psycopg2://{config["DB_USER"]}:{config["DB_PASSWORD"]}@{config["DB_HOST"]}/{config["DB_NAME"]}'
+# Usar DATABASE_URL de Railway si está disponible, sino construir la URL
+if config.get('DATABASE_URL'):
+    DATABASE_URL = config['DATABASE_URL']
+else:
+    DATABASE_URL = f'postgresql+psycopg2://{config["DB_USER"]}:{config["DB_PASSWORD"]}@{config["DB_HOST"]}/{config["DB_NAME"]}'
 
 # Crear motor de conexion de PostgreSQL
 engine = create_engine(DATABASE_URL)

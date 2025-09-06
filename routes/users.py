@@ -367,21 +367,36 @@ def update_current_user_profile(
             detail=f"Error al actualizar perfil: {str(e)}"
         )
 
-@router.get("/username/{username}", summary="Obtener usuario por nombre de usuario")
-def get_user_by_username(username: str, db: Session = Depends(get_db)):
+@router.get("/username/{username}", summary="Verificar si un nombre de usuario ya existe")
+def check_username_exists(username: str, db: Session = Depends(get_db)):
     """
-    Obtiene un usuario por su nombre de usuario
+    Verifica si un nombre de usuario ya está registrado en el sistema
     """
     try:
         user = db.query(Usuario).filter(Usuario.nombre_usuario == username).first()
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado"
-            )
-        return user
+        if user:
+            return {"exists": True, "message": "Nombre de usuario ya registrado"}
+        else:
+            return {"exists": False, "message": "Nombre de usuario disponible"}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener usuario: {str(e)}"
+            detail=f"Error verificando username: {str(e)}"
+        )
+
+@router.get("/check-email/{email}", summary="Verificar si un email ya existe")
+def check_email_exists(email: str, db: Session = Depends(get_db)):
+    """
+    Verifica si un email ya está registrado en el sistema
+    """
+    try:
+        user = db.query(Usuario).filter(Usuario.email == email).first()
+        if user:
+            return {"exists": True, "message": "Email ya registrado"}
+        else:
+            return {"exists": False, "message": "Email disponible"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error verificando email: {str(e)}"
         )

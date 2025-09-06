@@ -1,0 +1,109 @@
+<!-- templates/verification_email.html -->
+{% extends "base_email.html" %}
+
+{% block title %}Verifica tu cuenta - {{ app_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .verification-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        padding: 30px;
+        margin: 30px 0;
+        text-align: center;
+        border: 2px solid #dee2e6;
+    }
+    
+    .verification-code {
+        background: white;
+        border: 3px dashed #28a745;
+        border-radius: 12px;
+        padding: 25px;
+        margin: 20px 0;
+        display: inline-block;
+        min-width: 200px;
+    }
+    
+    .code {
+        font-size: 36px;
+        font-weight: bold;
+        color: #28a745;
+        letter-spacing: 8px;
+        font-family: 'Courier New', monospace;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .expiry-info {
+        background: #fff3cd;
+        color: #856404;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #ffc107;
+    }
+    
+    .steps {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+    
+    .steps ol {
+        text-align: left;
+        margin-left: 20px;
+    }
+    
+    .steps li {
+        margin: 10px 0;
+        color: #495057;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="color: #2c3e50; margin-bottom: 20px; text-align: center;">¡Bienvenido a la comunidad!</h2>
+
+<p style="font-size: 16px; margin-bottom: 20px;">
+    Hola <strong style="color: #2c3e50;">{{ username }}</strong>, 👋
+</p>
+
+<p style="font-size: 16px; margin-bottom: 25px; color: #495057;">
+    Gracias por registrarte en {{ app_name }}. Para completar tu registro y acceder a todas las funcionalidades, 
+    necesitamos verificar tu correo electrónico.
+</p>
+
+<div class="verification-section">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">Tu código de verificación</h3>
+    
+    <div class="verification-code">
+        <div class="code">{{ verification_code }}</div>
+    </div>
+    
+    <div class="expiry-info">
+        <strong>⏰ Este código expirará en 10 minutos</strong>
+    </div>
+</div>
+
+<div class="steps">
+    <h4 style="color: #2c3e50; margin-bottom: 15px;">¿Cómo verificar tu cuenta?</h4>
+    <ol>
+        <li>Regresa a la aplicación {{ app_name }}</li>
+        <li>Ingresa el código de verificación que aparece arriba</li>
+        <li>¡Listo! Tu cuenta estará verificada</li>
+    </ol>
+</div>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="#" class="btn">Verificar mi cuenta ahora</a>
+</div>
+
+<div class="alert alert-warning">
+    <strong>⚠️ Importante:</strong> Si no solicitaste este registro, puedes ignorar este email de forma segura. 
+    Tu información personal no será utilizada.
+</div>
+
+<p style="font-size: 14px; color: #6c757d; margin-top: 30px; text-align: center;">
+    ¿Tienes problemas? Contacta a nuestro equipo de soporte.
+</p>
+{% endblock %}
