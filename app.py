@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import os
 
@@ -34,6 +35,9 @@ app = FastAPI(
     description="REST API para la red social GeoPlanner",
     version="5.0.0"
 )
+
+# Configurar archivos estáticos
+app.mount("/static", StaticFiles(directory="public"), name="static")
 
 # Lista de orígenes permitidos (de dónde puede venir la solicitud)
 # Para desarrollo, puedes permitir el origen de tu app de React.

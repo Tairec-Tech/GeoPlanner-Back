@@ -158,8 +158,10 @@ class EmailService:
             reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
             
             html_content = self._render_template(
-                "password_reset.html",
+                "password_reset_email.html",
                 username=username,
+                reset_code=reset_token,
+                email=email,
                 reset_url=reset_url,
                 app_name="GeoPlanner"
             )

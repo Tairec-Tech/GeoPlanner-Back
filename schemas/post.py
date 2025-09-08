@@ -24,4 +24,4 @@ class PostResponse(BaseModel):
     fecha_creacion: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True

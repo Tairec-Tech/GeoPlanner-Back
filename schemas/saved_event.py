@@ -9,4 +9,4 @@ class SavedEventResponse(BaseModel):
     fecha_guardado: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True

@@ -16,4 +16,4 @@ class Ruta(RutaBase):
     id_publicacion: UUID
 
     class Config:
-        orm_mode = True
+        from_attributes = True
