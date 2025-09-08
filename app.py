@@ -48,6 +48,8 @@ origins = [
     "http://localhost:3000",  # Si usas Create React App
     "https://geoplanner-front.vercel.app",  # Tu frontend en Vercel
     "https://geoplanner.vercel.app",  # Alternativa
+    "https://geoplanner-0uva.onrender.com",  # Tu frontend en Render
+    "https://*.onrender.com",  # Permitir cualquier subdominio de Render
     # Añade aquí la URL de tu frontend si está en producción
 ]
 
@@ -56,8 +58,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Manejo global de excepciones de validación
