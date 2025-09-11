@@ -94,6 +94,7 @@ class Usuario(Base):
     inscripciones = relationship("Inscripcion", back_populates="usuario", cascade="all, delete-orphan")
     eventos_guardados = relationship("EventoGuardado", back_populates="usuario", cascade="all, delete-orphan")
     agenda_personal = relationship("ActividadAgenda", back_populates="usuario", cascade="all, delete-orphan")
+    notificaciones_recibidas = relationship("Notificacion", foreign_keys="Notificacion.id_usuario_destino", cascade="all, delete-orphan")
 
 
 class Publicacion(Base):
@@ -230,3 +231,23 @@ class HistorialAsistencia(Base):
     inscripcion_usuario = relationship("Usuario", foreign_keys=[id_inscripcion_usuario])
     inscripcion_publicacion = relationship("Publicacion", foreign_keys=[id_inscripcion_publicacion])
     verificador = relationship("Usuario", foreign_keys=[id_verificador])
+
+
+class Notificacion(Base):
+    __tablename__ = 'notificaciones'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id_usuario_destino = Column(UUID(as_uuid=True), ForeignKey('usuarios.id', ondelete='CASCADE'), nullable=False)
+    id_usuario_origen = Column(UUID(as_uuid=True), ForeignKey('usuarios.id', ondelete='CASCADE'), nullable=False)
+    id_publicacion = Column(UUID(as_uuid=True), ForeignKey('publicaciones.id', ondelete='CASCADE'), nullable=True)
+    id_comentario = Column(UUID(as_uuid=True), ForeignKey('comentarios.id', ondelete='CASCADE'), nullable=True)
+    tipo = Column(String(50), nullable=False)  # 'mencion', 'respuesta', 'like', etc.
+    mensaje = Column(Text, nullable=False)
+    leida = Column(Boolean, default=False)
+    fecha_creacion = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    # Relaciones
+    usuario_destino = relationship("Usuario", foreign_keys=[id_usuario_destino], back_populates="notificaciones_recibidas")
+    usuario_origen = relationship("Usuario", foreign_keys=[id_usuario_origen])
+    publicacion = relationship("Publicacion")
+    comentario = relationship("Comentario")

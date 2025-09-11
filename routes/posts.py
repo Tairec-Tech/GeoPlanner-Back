@@ -15,6 +15,12 @@ from datetime import datetime
 router = APIRouter()
 
 # Esquemas para publicaciones
+class RutaCreate(BaseModel):
+    latitud: float
+    longitud: float
+    etiqueta: str
+    orden: int
+
 class PostCreate(BaseModel):
     texto: str
     tipo: str  # 'Deporte', 'Social', 'Estudio', 'Cultural', 'Otro'
@@ -22,7 +28,7 @@ class PostCreate(BaseModel):
     privacidad: str = "publica"  # 'publica', 'amigos', 'privada'
     media_url: Optional[str] = None
     terminos_adicionales: Optional[str] = None
-    rutas: Optional[List[dict]] = None
+    rutas: Optional[List[RutaCreate]] = None
 
 class PostResponse(BaseModel):
     id: str
@@ -394,13 +400,13 @@ def create_post(
         # Crear rutas si se proporcionan
         if post_data.rutas:
             from models.ruta import Ruta
-            for i, ruta_data in enumerate(post_data.rutas):
+            for ruta_data in post_data.rutas:
                 ruta = Ruta(
                     id_publicacion=new_post.id,
-                    latitud=ruta_data.get("latitud", 0),
-                    longitud=ruta_data.get("longitud", 0),
-                    etiqueta=ruta_data.get("etiqueta", f"Punto {i+1}"),
-                    orden=ruta_data.get("orden", i)
+                    latitud=ruta_data.latitud,
+                    longitud=ruta_data.longitud,
+                    etiqueta=ruta_data.etiqueta,
+                    orden=ruta_data.orden
                 )
                 db.add(ruta)
             

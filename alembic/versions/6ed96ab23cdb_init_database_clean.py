@@ -9,19 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from models.base import Base
-from models.usuario import Usuario
-from models.publicacion import Publicacion
-from models.comentario import Comentario
-from models.like import Like
-from models.evento import Evento
-from models.inscripcion import Inscripcion
-from models.evento_guardado import EventoGuardado
-from models.actividad_agenda import ActividadAgenda
-from models.notificacion import Notificacion
-from models.configuracion_usuario import ConfiguracionUsuario
-from models.amistad import Amistad
-from models.historial_asistencia import HistorialAsistencia
+from models.models import Base
 
 
 # revision identifiers, used by Alembic.

@@ -29,22 +29,16 @@ class SavedEventResponse(BaseModel):
         }
 
 @router.post("/", summary="Guardar evento")
-def save_event(save_data: SaveEventRequest, user_id: str, db: Session = Depends(get_db)):
+def save_event(save_data: SaveEventRequest, current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    Guarda un evento (publicación) para un usuario
+    Guarda un evento (publicación) para el usuario autenticado
     """
     try:
-        # Validar UUIDs
-        uuid.UUID(user_id)
+        # Validar UUID de la publicación
         uuid.UUID(save_data.id_publicacion)
         
-        # Verificar que el usuario existe
-        user = db.query(Usuario).filter(Usuario.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado"
-            )
+        # Usar el usuario autenticado
+        user_id = str(current_user.id)
         
         # Verificar que la publicación existe
         publication = db.query(Publicacion).filter(Publicacion.id == save_data.id_publicacion).first()
@@ -100,14 +94,16 @@ def save_event(save_data: SaveEventRequest, user_id: str, db: Session = Depends(
         )
 
 @router.delete("/{publication_id}", summary="Eliminar evento guardado")
-def unsave_event(publication_id: str, user_id: str, db: Session = Depends(get_db)):
+def unsave_event(publication_id: str, current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    Elimina un evento guardado de la lista del usuario
+    Elimina un evento guardado de la lista del usuario autenticado
     """
     try:
-        # Validar UUIDs
-        uuid.UUID(user_id)
+        # Validar UUID de la publicación
         uuid.UUID(publication_id)
+        
+        # Usar el usuario autenticado
+        user_id = str(current_user.id)
         
         # Buscar el evento guardado
         saved_event = db.query(EventoGuardado).filter(
@@ -141,21 +137,13 @@ def unsave_event(publication_id: str, user_id: str, db: Session = Depends(get_db
         )
 
 @router.get("/", response_model=List[SavedEventResponse], summary="Obtener eventos guardados del usuario")
-def get_saved_events(user_id: str, db: Session = Depends(get_db)):
+def get_saved_events(current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """
-    Obtiene todos los eventos guardados de un usuario
+    Obtiene todos los eventos guardados del usuario autenticado
     """
     try:
-        # Validar UUID
-        uuid.UUID(user_id)
-        
-        # Verificar que el usuario existe
-        user = db.query(Usuario).filter(Usuario.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado"
-            )
+        # Usar el usuario autenticado
+        user_id = str(current_user.id)
         
         # Obtener eventos guardados
         saved_events = db.query(EventoGuardado).filter(EventoGuardado.id_usuario == user_id).all()
