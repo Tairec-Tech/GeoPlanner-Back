@@ -8,7 +8,7 @@ import uuid
 import secrets
 from uuid import UUID
 from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer, HTTPBearer, OAuth2PasswordRequestForm
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordRequestForm
 from datetime import timedelta, datetime
 from typing import Optional
 
@@ -55,8 +55,8 @@ SECRET_KEY = config['SECRET_KEY']
 ALGORITHM = config['ALGORITHM']
 ACCESS_TOKEN_EXPIRE_MINUTES = config['ACCESS_TOKEN_EXPIRE_MINUTES']
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
-http_bearer = HTTPBearer(auto_error=False)
+# Configuración de seguridad Bearer
+security = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -64,28 +64,45 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    """
+    Obtiene el usuario actual basado en el token Bearer JWT
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No autenticado",
+        detail="No se pudieron validar las credenciales",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    if not credentials:
+        raise credentials_exception
+    
     try:
+        # Extraer el token del header Authorization: Bearer <token>
+        token = credentials.credentials
+        
+        # Decodificar el token JWT
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
+        user_id: str = payload.get("sub")
+        
+        if user_id is None:
             raise credentials_exception
         
         # Convertir el user_id string a UUID
         user_uuid = uuid.UUID(user_id)
+        
+        # Buscar el usuario en la base de datos
         user = db.query(Usuario).filter(Usuario.id == user_uuid).first()
+        
         if user is None:
             raise credentials_exception
+            
         return user
-    except (JWTError, ValueError):
+        
+    except (JWTError, ValueError, TypeError):
         raise credentials_exception
 
-def get_current_user_optional(credentials: Optional[HTTPBearer] = Depends(http_bearer), db: Session = Depends(get_db)):
+def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False, scheme_name="BearerAuth")), db: Session = Depends(get_db)):
     """
     Versión opcional de get_current_user que no requiere autenticación
     """
@@ -103,7 +120,7 @@ def get_current_user_optional(credentials: Optional[HTTPBearer] = Depends(http_b
         user_uuid = uuid.UUID(user_id)
         user = db.query(Usuario).filter(Usuario.id == user_uuid).first()
         return user
-    except (JWTError, ValueError):
+    except (JWTError, ValueError, TypeError):
         return None
 
 @router.post("/register", response_model=UserResponse, summary="Registrar nuevo usuario")
@@ -170,7 +187,7 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
 @router.post("/login", summary="Iniciar sesión")
 def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     """
-    Autentica un usuario y devuelve información básica
+    Autentica un usuario y devuelve token JWT + información básica
     """
     try:
         # Buscar usuario por email o nombre de usuario
@@ -186,12 +203,7 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
             )
         
         # Verificar contraseña
-        print(f"🔐 Intentando login para: {login_data.username_or_email}")
-        print(f"🔐 Usuario encontrado: {user.nombre_usuario} (ID: {user.id})")
-        print(f"🔐 Hash almacenado: {user.password_hash[:20]}...")
-        
         password_match = bcrypt.checkpw(login_data.password.encode('utf-8'), user.password_hash.encode('utf-8'))
-        print(f"🔐 Contraseña coincide: {password_match}")
         
         if not password_match:
             raise HTTPException(
@@ -199,8 +211,13 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
                 detail="Credenciales inválidas"
             )
         
+        # Crear token JWT
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
         return {
             "mensaje": "Login exitoso",
+            "access_token": access_token,
+            "token_type": "bearer",
             "usuario": {
                 "id": str(user.id),
                 "nombre_usuario": user.nombre_usuario,
@@ -218,22 +235,59 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
             detail=f"Error al iniciar sesión: {str(e)}"
         )
 
-@router.post("/token", summary="Obtener token JWT")
+@router.post("/token", summary="Obtener token JWT (para frontend)")
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    # Buscar usuario por email o nombre de usuario
-    user = db.query(Usuario).filter(
-        (Usuario.email == form_data.username) | 
-        (Usuario.nombre_usuario == form_data.username)
-    ).first()
-    
-    if not user or not bcrypt.checkpw(form_data.password.encode('utf-8'), user.password_hash.encode('utf-8')):
+    """
+    Endpoint para obtener token JWT - usado por el frontend
+    """
+    try:
+        # Buscar usuario por email o nombre de usuario
+        user = db.query(Usuario).filter(
+            (Usuario.email == form_data.username) | 
+            (Usuario.nombre_usuario == form_data.username)
+        ).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciales inválidas",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Verificar contraseña
+        password_match = bcrypt.checkpw(form_data.password.encode('utf-8'), user.password_hash.encode('utf-8'))
+        
+        if not password_match:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciales inválidas",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Crear token JWT
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "nombre_usuario": user.nombre_usuario,
+                "email": user.email,
+                "nombre": user.nombre,
+                "apellido": user.apellido
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al iniciar sesión: {str(e)}"
         )
-    access_token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+
+# Endpoints de prueba eliminados
 
 # Endpoints secretos para administradores (no aparecen en docs)
 

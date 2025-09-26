@@ -33,8 +33,123 @@ Base.metadata.create_all(engine)
 app = FastAPI(
     title="GeoPlanner API",
     description="REST API para la red social GeoPlanner",
-    version="5.0.0"
+    version="5.0.0",
+    # Configuración de seguridad para Swagger
+    openapi_tags=[
+        {
+            "name": "Autenticación",
+            "description": "Endpoints para login, registro y gestión de tokens JWT"
+        },
+        {
+            "name": "Usuarios", 
+            "description": "Gestión de perfiles de usuario y configuraciones"
+        },
+        {
+            "name": "Publicaciones",
+            "description": "Creación y gestión de rutas y publicaciones"
+        },
+        {
+            "name": "Comentarios",
+            "description": "Sistema de comentarios en rutas"
+        },
+        {
+            "name": "Amistades",
+            "description": "Sistema de amigos y conexiones sociales"
+        },
+        {
+            "name": "Eventos Guardados",
+            "description": "Guardado y gestión de eventos favoritos"
+        },
+        {
+            "name": "Agenda",
+            "description": "Gestión de agenda personal y eventos"
+        },
+        {
+            "name": "Likes",
+            "description": "Sistema de likes y reacciones"
+        },
+        {
+            "name": "Notificaciones",
+            "description": "Sistema de notificaciones en tiempo real"
+        },
+        {
+            "name": "Subida de Archivos",
+            "description": "Gestión de archivos e imágenes"
+        },
+        {
+            "name": "QR y Asistencia",
+            "description": "Sistema de códigos QR para asistencia a eventos"
+        },
+        {
+            "name": "Configuraciones de Usuario",
+            "description": "Preferencias y configuraciones personalizadas"
+        }
+    ]
 )
+
+# Configurar esquema de seguridad para Swagger
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.openapi.utils import get_openapi
+
+# Esquema de seguridad Bearer
+security_scheme = HTTPBearer(
+    scheme_name="Bearer",
+    bearerFormat="JWT",
+    description="Ingresa tu token JWT obtenido del endpoint /auth/login"
+)
+
+# Función personalizada para OpenAPI
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="GeoPlanner API",
+        version="5.0.0",
+        description="""
+        ## GeoPlanner API - Red Social de Rutas y Eventos
+
+        ### 🔐 Autenticación
+        Para acceder a endpoints protegidos:
+        1. Haz POST a `/auth/login` con `username_or_email` y `password`
+        2. Copia el `access_token` de la respuesta
+        3. Haz clic en "Authorize" (🔒) arriba y pega el token
+        4. Ahora puedes usar todos los endpoints protegidos
+
+        ### 📍 Funcionalidades Principales
+        - **Rutas**: Crear y compartir rutas geolocalizadas
+        - **Eventos**: Organizar y asistir a eventos
+        - **Social**: Sistema de amigos, likes y comentarios
+        - **QR**: Códigos QR para asistencia a eventos
+        - **Temas**: Personalización de interfaz
+
+        ### 🚀 Endpoints Principales
+        - `POST /auth/login` - Iniciar sesión
+        - `POST /auth/register` - Registro de usuario
+        - `GET /posts` - Obtener rutas públicas
+        - `POST /posts` - Crear nueva ruta
+        - `GET /users/me` - Perfil del usuario actual
+        """,
+        routes=app.routes,
+    )
+    
+    # Agregar esquema de seguridad
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Token JWT obtenido del endpoint de login"
+        }
+    }
+    
+    # No aplicar seguridad automáticamente - dejar que cada endpoint maneje su propia seguridad
+    # Los endpoints que necesitan autenticación ya tienen Depends(get_current_user)
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Configurar archivos estáticos
 app.mount("/static", StaticFiles(directory="public"), name="static")
@@ -76,22 +191,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 def read_root():
     return {"mensaje": "Bienvenido a GeoPlanner API", "version": "5.0.0", "estado": "activo"}
 
-# Endpoint de prueba para verificar autenticación
-@app.get("/test-auth")
-def test_auth():
-    return {"mensaje": "Endpoint de prueba sin autenticación funcionando"}
-
-# Endpoint de prueba para verificar variables de entorno
-@app.get("/test-env")
-def test_env():
-    return {
-        "mensaje": "Variables de entorno SMTP",
-        "MAIL_USERNAME": os.getenv("MAIL_USERNAME", "NO_CONFIGURADO"),
-        "MAIL_PASSWORD": os.getenv("MAIL_PASSWORD", "NO_CONFIGURADO"),
-        "MAIL_SERVER": os.getenv("MAIL_SERVER", "NO_CONFIGURADO"),
-        "MAIL_FROM": os.getenv("MAIL_FROM", "NO_CONFIGURADO"),
-        "MAIL_PORT": os.getenv("MAIL_PORT", "NO_CONFIGURADO")
-    }
+# Endpoints de prueba eliminados
 
 # Registrar todos los routers (incluyendo agenda)
 app.include_router(user_router, prefix="/users", tags=["Usuarios"])
